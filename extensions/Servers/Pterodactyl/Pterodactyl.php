@@ -142,10 +142,12 @@ class Pterodactyl extends Server
         // Get eggs if nest_id is set
         $eggList = [];
         $isEggLoading = true;
+        $disableEggSelect = true; // New variable to control egg select state
 
         if (isset($values['nest_id'])) {
             $eggList = $this->getEggsForNest($values['nest_id']);
             $isEggLoading = empty($eggList);
+            $disableEggSelect = $isEggLoading; // Disable select while loading or if no eggs
         }
 
         $using_port_array = isset($values['port_array']) && $values['port_array'] !== '';
@@ -184,7 +186,7 @@ class Pterodactyl extends Server
                 'type' => 'select',
                 'options' => $eggList,
                 'required' => true,
-                'disabled' => $isEggLoading,
+                'disabled' => $disableEggSelect, // Use new variable to control disabled state
                 'placeholder' => $isEggLoading ? 'Loading eggs...' : 'Select an egg',
                 'clearOnParentChange' => true,
                 'dependent' => [
