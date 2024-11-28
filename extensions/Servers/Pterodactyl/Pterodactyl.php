@@ -68,53 +68,83 @@ class Pterodactyl extends Server
 
 
     private $eggsCache = [];
+    private const CACHE_TTL = 300; // 5 minutes cache
 
-    private function prefetchEggs($nests)
+    private function getCacheKey($nestId): string
     {
-        foreach ($nests['data'] as $nest) {
-            try {
-                $eggs = $this->request('/api/application/nests/' . $nest['attributes']['id'] . '/eggs');
-                $eggList = [];
-                foreach ($eggs['data'] as $egg) {
-                    $eggList[$egg['attributes']['id']] = $egg['attributes']['name'];
-                }
-                $this->eggsCache[$nest['attributes']['id']] = $eggList;
-            } catch (\Exception $e) {
-                $this->eggsCache[$nest['attributes']['id']] = [];
+        return 'pterodactyl_eggs_' . $this->config('host') . '_' . $nestId;
+    }
+
+    private function getEggsForNest($nestId)
+    {
+        $cacheKey = $this->getCacheKey($nestId);
+
+        // Try to get from memory cache first
+        if (isset($this->eggsCache[$nestId])) {
+            return $this->eggsCache[$nestId];
+        }
+
+        // Then try Redis/file cache
+        if (Cache::has($cacheKey)) {
+            $this->eggsCache[$nestId] = Cache::get($cacheKey);
+            return $this->eggsCache[$nestId];
+        }
+
+        // If not in cache, fetch from API
+        try {
+            $eggs = $this->request('/api/application/nests/' . $nestId . '/eggs');
+            $eggList = [];
+            foreach ($eggs['data'] as $egg) {
+                $eggList[$egg['attributes']['id']] = $egg['attributes']['name'];
             }
+
+            // Store in both caches
+            $this->eggsCache[$nestId] = $eggList;
+            Cache::put($cacheKey, $eggList, self::CACHE_TTL);
+
+            return $eggList;
+        } catch (\Exception $e) {
+            return [];
         }
     }
 
-
     public function getProductConfig($values = []): array
     {
-        $nodes = $this->request('/api/application/nodes');
-        $nodeList = [];
-        foreach ($nodes['data'] as $node) {
-            $nodeList[$node['attributes']['id']] = $node['attributes']['name'];
-        }
+        // Using cache for nodes and locations
+        $nodeList = Cache::remember('pterodactyl_nodes_' . $this->config('host'), self::CACHE_TTL, function () {
+            $nodes = $this->request('/api/application/nodes');
+            $list = [];
+            foreach ($nodes['data'] as $node) {
+                $list[$node['attributes']['id']] = $node['attributes']['name'];
+            }
+            return $list;
+        });
 
-        $location = $this->request('/api/application/locations');
-        $locationList = [];
-        foreach ($location['data'] as $location) {
-            $locationList[$location['attributes']['id']] = $location['attributes']['short'];
-        }
+        $locationList = Cache::remember('pterodactyl_locations_' . $this->config('host'), self::CACHE_TTL, function () {
+            $locations = $this->request('/api/application/locations');
+            $list = [];
+            foreach ($locations['data'] as $location) {
+                $list[$location['attributes']['id']] = $location['attributes']['short'];
+            }
+            return $list;
+        });
 
-        $nests = $this->request('/api/application/nests');
-        $nestList = [];
-        foreach ($nests['data'] as $nest) {
-            $nestList[$nest['attributes']['id']] = $nest['attributes']['name'];
-        }
+        $nestList = Cache::remember('pterodactyl_nests_' . $this->config('host'), self::CACHE_TTL, function () {
+            $nests = $this->request('/api/application/nests');
+            $list = [];
+            foreach ($nests['data'] as $nest) {
+                $list[$nest['attributes']['id']] = $nest['attributes']['name'];
+            }
+            return $list;
+        });
 
-        // Prefetch all eggs in background
-        $this->prefetchEggs($nests);
-
-        // Initialize empty egg list
+        // Get eggs if nest_id is set
         $eggList = [];
+        $isEggLoading = true;
 
-        // If nest_id is set and we have cached eggs, use them
-        if (isset($values['nest_id']) && isset($this->eggsCache[$values['nest_id']])) {
-            $eggList = $this->eggsCache[$values['nest_id']];
+        if (isset($values['nest_id'])) {
+            $eggList = $this->getEggsForNest($values['nest_id']);
+            $isEggLoading = empty($eggList);
         }
 
         $using_port_array = isset($values['port_array']) && $values['port_array'] !== '';
@@ -153,6 +183,9 @@ class Pterodactyl extends Server
                 'type' => 'select',
                 'options' => $eggList,
                 'required' => true,
+                'disabled' => $isEggLoading,
+                'placeholder' => $isEggLoading ? 'Loading eggs...' : 'Select an egg',
+                'clearOnParentChange' => true,
                 'dependent' => [
                     'field' => 'nest_id',
                     'endpoint' => '/api/application/nests/{value}/eggs',
