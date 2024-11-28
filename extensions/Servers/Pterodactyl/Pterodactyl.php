@@ -86,9 +86,13 @@ class Pterodactyl extends Server
 
         $eggList = [];
         if (isset($values['nest_id'])) {
-            $eggs = $this->request('/api/application/nests/' . $values['nest_id'] . '/eggs');
-            foreach ($eggs['data'] as $egg) {
-                $eggList[$egg['attributes']['id']] = $egg['attributes']['name'];
+            try {
+                $eggs = $this->request('/api/application/nests/' . $values['nest_id'] . '/eggs');
+                foreach ($eggs['data'] as $egg) {
+                    $eggList[$egg['attributes']['id']] = $egg['attributes']['name'];
+                }
+            } catch (\Exception $e) {
+                // Handle error silently and return empty egg list
             }
         }
 
@@ -119,8 +123,8 @@ class Pterodactyl extends Server
                 'options' => $nestList,
                 'description' => 'Nest ID to fetch the eggs from',
                 'required' => true,
-                // Lets fetch the eggs every time the nest id changes
                 'live' => true,
+                'onChange' => 'updateEggs',
             ],
             [
                 'name' => 'egg_id',
@@ -128,6 +132,12 @@ class Pterodactyl extends Server
                 'type' => 'select',
                 'options' => $eggList,
                 'required' => true,
+                'dependent' => [
+                    'field' => 'nest_id',
+                    'endpoint' => '/api/application/nests/{value}/eggs',
+                    'value_key' => 'attributes.id',
+                    'label_key' => 'attributes.name',
+                ],
             ],
             [
                 'name' => 'memory',
