@@ -84,17 +84,19 @@ class Pterodactyl extends Server
             $nestList[$nest['attributes']['id']] = $nest['attributes']['name'];
         }
 
-        $eggList = [];
+        $eggList = ['please-wait' => 'Please wait, fetching...'];
         if (isset($values['nest_id'])) {
             try {
                 $eggs = $this->request('/api/application/nests/' . $values['nest_id'] . '/eggs');
+                $eggList = [];  // Clear the "please wait" message
                 foreach ($eggs['data'] as $egg) {
                     $eggList[$egg['attributes']['id']] = $egg['attributes']['name'];
                 }
             } catch (\Exception $e) {
-                // Handle error silently and return empty egg list
+                $eggList = ['error' => 'Failed to fetch eggs'];
             }
         }
+
 
         $using_port_array = isset($values['port_array']) && $values['port_array'] !== '';
 
