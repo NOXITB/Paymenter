@@ -142,12 +142,16 @@ class Pterodactyl extends Server
         // Get eggs if nest_id is set
         $eggList = [];
         $isEggLoading = true;
-        $disableEggSelect = true; // New variable to control egg select state
 
-        if (isset($values['nest_id'])) {
+        if (isset($values['nest_id']) && $values['nest_id'] !== '') {
             $eggList = $this->getEggsForNest($values['nest_id']);
             $isEggLoading = empty($eggList);
-            $disableEggSelect = $isEggLoading; // Disable select while loading or if no eggs
+        }
+
+        // Always disable egg selection during nest changes
+        $disableEggSelect = true;
+        if (isset($values['nest_id']) && $values['nest_id'] !== '' && !empty($eggList)) {
+            $disableEggSelect = false;
         }
 
         $using_port_array = isset($values['port_array']) && $values['port_array'] !== '';
@@ -186,7 +190,7 @@ class Pterodactyl extends Server
                 'type' => 'select',
                 'options' => $eggList,
                 'required' => true,
-                'disabled' => $disableEggSelect, // Use new variable to control disabled state
+                'disabled' => $disableEggSelect,
                 'placeholder' => $isEggLoading ? 'Loading eggs...' : 'Select an egg',
                 'clearOnParentChange' => true,
                 'dependent' => [
@@ -194,6 +198,7 @@ class Pterodactyl extends Server
                     'endpoint' => '/api/application/nests/{value}/eggs',
                     'value_key' => 'attributes.id',
                     'label_key' => 'attributes.name',
+                    'clearOnChange' => true,
                 ],
             ],
             [
