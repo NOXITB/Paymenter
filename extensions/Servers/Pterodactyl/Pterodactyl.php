@@ -48,6 +48,8 @@ class Pterodactyl extends Server
         return true;
     }
 
+
+
     public function request($url, $method = 'get', $data = []): array
     {
         // Trim any leading slashes from the base url and add the path URL to it
@@ -63,6 +65,26 @@ class Pterodactyl extends Server
 
         return $response->json() ?? [];
     }
+
+
+    private $eggsCache = [];
+
+    private function prefetchEggs($nests)
+    {
+        foreach ($nests['data'] as $nest) {
+            try {
+                $eggs = $this->request('/api/application/nests/' . $nest['attributes']['id'] . '/eggs');
+                $eggList = [];
+                foreach ($eggs['data'] as $egg) {
+                    $eggList[$egg['attributes']['id']] = $egg['attributes']['name'];
+                }
+                $this->eggsCache[$nest['attributes']['id']] = $eggList;
+            } catch (\Exception $e) {
+                $this->eggsCache[$nest['attributes']['id']] = [];
+            }
+        }
+    }
+
 
     public function getProductConfig($values = []): array
     {
@@ -84,19 +106,16 @@ class Pterodactyl extends Server
             $nestList[$nest['attributes']['id']] = $nest['attributes']['name'];
         }
 
-        $eggList = ['please-wait' => 'Please wait, fetching...'];
-        if (isset($values['nest_id'])) {
-            try {
-                $eggs = $this->request('/api/application/nests/' . $values['nest_id'] . '/eggs');
-                $eggList = [];  // Clear the "please wait" message
-                foreach ($eggs['data'] as $egg) {
-                    $eggList[$egg['attributes']['id']] = $egg['attributes']['name'];
-                }
-            } catch (\Exception $e) {
-                $eggList = ['error' => 'Failed to fetch eggs'];
-            }
-        }
+        // Prefetch all eggs in background
+        $this->prefetchEggs($nests);
 
+        // Initialize empty egg list
+        $eggList = [];
+
+        // If nest_id is set and we have cached eggs, use them
+        if (isset($values['nest_id']) && isset($this->eggsCache[$values['nest_id']])) {
+            $eggList = $this->eggsCache[$values['nest_id']];
+        }
 
         $using_port_array = isset($values['port_array']) && $values['port_array'] !== '';
 
